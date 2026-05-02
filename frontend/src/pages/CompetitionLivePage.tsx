@@ -74,11 +74,35 @@ export default function CompetitionLivePage() {
   const [flash, setFlash] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>('');
+  // Audio must be unlocked by a user gesture (mobile + autoplay policy)
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const audioUnlockedRef = useRef(false);
   const logBottomRef = useRef<HTMLDivElement>(null);
   const langRef = useRef<Language>(language);
   langRef.current = language;
   const voiceRef = useRef<string>(selectedVoice);
   voiceRef.current = selectedVoice;
+
+  const unlockAudio = () => {
+    // Prime Web Audio API inside the user-gesture handler
+    try {
+      const ctx = new AudioContext();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      ctx.resume();
+    } catch {}
+    // Prime SpeechSynthesis with a silent utterance
+    if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    }
+    audioUnlockedRef.current = true;
+    setAudioUnlocked(true);
+  };
 
   // Load/reload voice list when language changes or voices become available
   useEffect(() => {
@@ -146,11 +170,13 @@ export default function CompetitionLivePage() {
       setFlash(true);
       setTimeout(() => setFlash(false), 1500);
 
-      // Play chime, then speak after it finishes (~2.2 s)
-      // Chrome locks the audio pipeline while AudioContext is active,
-      // so we must wait for the chime to end before calling speechSynthesis.
-      playAttentionChime();
-      setTimeout(() => speakText(fullText, langRef.current, voiceRef.current || undefined), 2200);
+      // Only play audio if the user has tapped the unlock button.
+      // AudioContext and SpeechSynthesis require a prior user gesture on
+      // mobile (iOS/Android) and on prod pages loaded without interaction.
+      if (audioUnlockedRef.current) {
+        playAttentionChime();
+        setTimeout(() => speakText(fullText, langRef.current, voiceRef.current || undefined), 2200);
+      }
     };
 
     // Silent group update — just refresh the displayed group, no sound
@@ -209,6 +235,31 @@ export default function CompetitionLivePage() {
     <div
       className={`min-h-screen bg-slate-950 transition-colors duration-300 ${flash ? "bg-indigo-950" : ""}`}
     >
+      {/* ── Audio unlock gate ─────────────────────────────────────────────────
+          Mobile browsers (iOS / Android) and some desktop configs block
+          AudioContext + SpeechSynthesis until the user has interacted with
+          the page. This overlay forces that gesture before any announcement
+          can play, preventing silent chimes. ──────────────────────────────── */}
+      {!audioUnlocked && (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-sm cursor-pointer"
+          onClick={unlockAudio}
+        >
+          <div className="flex flex-col items-center gap-6 text-center px-8">
+            <div className="w-20 h-20 rounded-full bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center animate-pulse">
+              <svg className="w-10 h-10 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-white text-2xl font-bold mb-2">Dotknij, aby włączyć dźwięk</p>
+              <p className="text-slate-400 text-sm">Tap to enable audio</p>
+            </div>
+            <div className="text-xs text-slate-500">Wymagane przez przeglądarkę · Required by browser</div>
+          </div>
+        </div>
+      )}
+
       {/* Flash overlay */}
       {flash && (
         <div className="fixed inset-0 pointer-events-none z-50 bg-indigo-500/10 animate-pulse" />

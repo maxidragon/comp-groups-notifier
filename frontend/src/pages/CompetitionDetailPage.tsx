@@ -4,7 +4,6 @@ import api from '../lib/api';
 //eslint-disable-next-line
 //@ts-ignore
 import '@cubing/icons';
-import { playAttentionChime } from '../lib/announcements';
 
 interface Activity {
   id: number;
@@ -128,7 +127,6 @@ export default function CompetitionDetailPage() {
 
   const handleAnnounce = async (type: 'all' | 'judges' | 'competitors' | 'scramblers' | 'runners') => {
     if (!comp?.currentGroupId) return;
-    playAttentionChime();
     setAnnouncing(true);
     try {
       await api.post(`/competitions/${comp.id}/announce`, { type });

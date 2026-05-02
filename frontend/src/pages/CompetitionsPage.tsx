@@ -23,7 +23,7 @@ export default function CompetitionsPage() {
   const [wcaComps, setWcaComps] = useState<WcaCompetition[]>([]);
   const [managed, setManaged] = useState<ManagedCompetition[]>([]);
   const [loadingWca, setLoadingWca] = useState(true);
-  const [loadingManaged, setLoadingManaged] = useState(true);
+  // const [loadingManaged, setLoadingManaged] = useState(true);
   const [adding, setAdding] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export default function CompetitionsPage() {
   const fetchManaged = async () => {
     const { data } = await api.get('/competitions');
     setManaged(data);
-    setLoadingManaged(false);
+    // setLoadingManaged(false);
   };
 
   const fetchWca = async () => {

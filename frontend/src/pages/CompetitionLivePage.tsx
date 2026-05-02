@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+//eslint-disable-next-line
+//@ts-ignore
 import "@cubing/icons";
 import { getAnnouncementsSocket } from "../lib/socket";
 import type { Language, AnnounceType } from "../lib/announcements";
@@ -36,25 +38,20 @@ interface AnnouncementLogEntry extends AnnouncementEvent {
 }
 
 
-const LANG_LABELS: Record<Language, string> = {
-  pl: "🇵🇱 Polski",
-  en: "🇬🇧 English",
-};
-
-const TYPE_LABELS_PL: Record<AnnounceType, string> = {
-  all: "Cała grupa",
-  judges: "Sędziowie",
-  competitors: "Zawodnicy",
-  scramblers: "Scramblerzy",
-  runners: "Runnerzy",
-};
-const TYPE_LABELS_EN: Record<AnnounceType, string> = {
-  all: "Full group",
-  judges: "Judges",
-  competitors: "Competitors",
-  scramblers: "Scramblers",
-  runners: "Runners",
-};
+// const TYPE_LABELS_PL: Record<AnnounceType, string> = {
+//   all: "Cała grupa",
+//   judges: "Sędziowie",
+//   competitors: "Zawodnicy",
+//   scramblers: "Scramblerzy",
+//   runners: "Runnerzy",
+// };
+// const TYPE_LABELS_EN: Record<AnnounceType, string> = {
+//   all: "Full group",
+//   judges: "Judges",
+//   competitors: "Competitors",
+//   scramblers: "Scramblers",
+//   runners: "Runners",
+// };
 
 function EventIcon({ eventId }: { eventId: string }) {
   return (
@@ -71,8 +68,8 @@ export default function CompetitionLivePage() {
   const [loading, setLoading] = useState(true);
   const [language, setLanguage] = useState<Language>("pl");
   const [log, setLog] = useState<AnnouncementLogEntry[]>([]);
-  const [lastAnnouncement, setLastAnnouncement] =
-    useState<AnnouncementLogEntry | null>(null);
+  // const [lastAnnouncement, setLastAnnouncement] =
+  //   useState<AnnouncementLogEntry | null>(null);
   const [connected, setConnected] = useState(false);
   const [flash, setFlash] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -142,7 +139,7 @@ export default function CompetitionLivePage() {
       setComp((prev) =>
         prev ? { ...prev, currentGroupId: event.activityCode } : prev,
       );
-      setLastAnnouncement(entry);
+      // setLastAnnouncement(entry);
       setLog((prev) => [entry, ...prev].slice(0, 20));
 
       // Flash effect
@@ -157,7 +154,7 @@ export default function CompetitionLivePage() {
     };
 
     // Silent group update — just refresh the displayed group, no sound
-    const onGroupUpdated = (event: { activityCode: string | null }) => {
+    const onGroupUpdated = (event: { activityCode: string }) => {
       setComp((prev) =>
         prev ? { ...prev, currentGroupId: event.activityCode } : prev,
       );
@@ -187,7 +184,7 @@ export default function CompetitionLivePage() {
     ? parseActivityCode(comp.currentGroupId)
     : null;
 
-  const typeLabels = language === "pl" ? TYPE_LABELS_PL : TYPE_LABELS_EN;
+  // const typeLabels = language === "pl" ? TYPE_LABELS_PL : TYPE_LABELS_EN;
 
   if (loading) {
     return (

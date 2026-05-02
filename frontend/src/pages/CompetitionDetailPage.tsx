@@ -1,17 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../lib/api';
+//eslint-disable-next-line
+//@ts-ignore
 import '@cubing/icons';
 import { playAttentionChime } from '../lib/announcements';
-
-interface Round {
-  id: string;
-  eventId: string;
-  format: string;
-  cutoff?: any;
-  timeLimit?: any;
-  results?: any[];
-}
 
 interface Activity {
   id: number;

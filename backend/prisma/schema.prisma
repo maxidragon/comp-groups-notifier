@@ -1,0 +1,51 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id                  String              @id @default(uuid())
+  fullName            String?             @map("full_name")
+  wcaUserId           Int?                @unique @map("wca_user_id")
+  wcaAccessToken      String?             @db.Text @map("wca_access_token")
+  avatarUrl           String?             @map("avatar_url")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  competitionAccesses CompetitionAccess[]
+
+  @@map("users")
+}
+
+model Competition {
+  id                  String              @id @default(uuid())
+  wcaId               String              @unique @map("wca_id")
+  name                String
+  countryIso2         String?             @map("country_iso_2")
+  currentGroupId      String?             @map("current_group_id")
+  competitionAccesses CompetitionAccess[]
+  schedule            Json?               // WCIF schedule stored as JSON
+  events              Json?               // WCIF events stored as JSON
+  persons             Json?               // WCIF persons (with assignments) stored as JSON
+
+  @@map("competitions")
+}
+
+model CompetitionAccess {
+  id            String      @id @default(uuid())
+  competition   Competition @relation(fields: [competitionId], references: [id])
+  competitionId String      @map("competition_id")
+  user          User        @relation(fields: [userId], references: [id])
+  userId        String      @map("user_id")
+  role          String      @default("organizer") // organizer | delegate
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@unique([competitionId, userId])
+  @@map("competition_access")
+}

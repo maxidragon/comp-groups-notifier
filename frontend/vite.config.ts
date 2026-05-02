@@ -8,9 +8,17 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // REST API
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5051',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      // Socket.io in dev (connects directly to backend, no path rewrite needed)
+      '/socket.io': {
+        target: 'http://localhost:5051',
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

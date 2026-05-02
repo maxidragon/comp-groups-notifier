@@ -24,8 +24,16 @@ export class AuthController {
     const user = req.user as any;
     console.log(user);
     const token = this.authService.generateJwt(user);
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-    // Redirect to frontend with JWT in query param (frontend stores it in localStorage)
+
+    // Prefer the explicit FRONTEND_URL env var.
+    // Fall back to deriving origin from Nginx-forwarded headers so this works
+    // in production without extra config: Nginx sets Host=$host and
+    // X-Forwarded-Proto=$scheme, giving us the correct https:// origin.
+    const configuredUrl = this.configService.get<string>('FRONTEND_URL');
+    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol;
+    const host = req.get('host'); // 'cgn.maksymiliangala.com' via Nginx Host header
+    const frontendUrl = configuredUrl || `${proto}://${host}`;
+
     return res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
   }
 

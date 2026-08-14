@@ -82,6 +82,30 @@ export function parseActivityCode(code: string) {
   };
 }
 
+// ─── Polish ordinal numbers (genitive feminine) ───────────────────────────────
+// Used after "rundy" and "grupy" which are genitive of feminine nouns.
+
+const PL_ORD_ONES = [
+  "", "pierwszej", "drugiej", "trzeciej", "czwartej", "piątej",
+  "szóstej", "siódmej", "ósmej", "dziewiątej",
+];
+const PL_ORD_TEENS = [
+  "dziesiątej", "jedenastej", "dwunastej", "trzynastej", "czternastej",
+  "piętnastej", "szesnastej", "siedemnastej", "osiemnastej", "dziewiętnastej",
+];
+const PL_ORD_TENS = [
+  "", "", "dwudziestej", "trzydziestej", "czterdziestej", "pięćdziesiątej",
+];
+
+function toPolishOrdinalGenF(n: number): string {
+  if (n >= 10 && n < 20) return PL_ORD_TEENS[n - 10];
+  const ten = Math.floor(n / 10);
+  const one = n % 10;
+  if (ten === 0) return PL_ORD_ONES[one] || String(n);
+  if (one === 0) return PL_ORD_TENS[ten] || String(n);
+  return `${PL_ORD_TENS[ten]} ${PL_ORD_ONES[one]}`;
+}
+
 // ─── Text builder ──────────────────────────────────────────────────────────────
 
 export function buildAnnouncementText(
@@ -93,8 +117,8 @@ export function buildAnnouncementText(
   const eventName = EVENT_NAMES[language][eventId] ?? eventId;
 
   if (language === "pl") {
-    const roundStr = round ? `rundy ${round}` : "";
-    const groupStr = group ? `grupy ${group}` : "";
+    const roundStr = round ? `rundy ${toPolishOrdinalGenF(round)}` : "";
+    const groupStr = group ? `grupy ${toPolishOrdinalGenF(group)}` : "";
     const which = [eventName, roundStr, groupStr].filter(Boolean).join(", ");
 
     const texts: Record<AnnounceType, string> = {
@@ -244,55 +268,75 @@ export function playAttentionChime(): void {
 
 // ─── Text-to-speech ──────────────────────────────────────────────────────────
 
-/** Returns all browser voices that match the given language prefix.
- *  For Polish: "anika" voice is sorted first, then other local voices, then cloud. */
+// Preferred neural voice names per language — these are Edge's free "Online (Natural)"
+// voices, which are the same models as Azure Neural TTS served through the browser.
+const PREFERRED_PL = ["zofia", "marek"];
+const PREFERRED_EN = ["jenny", "aria", "guy", "natasha", "ryan"];
+
+function scoreVoice(v: SpeechSynthesisVoice, preferred: string[]): number {
+  const name = v.name.toLowerCase();
+  const preferredIdx = preferred.findIndex((p) => name.includes(p));
+  if (preferredIdx !== -1) return 100 - preferredIdx; // highest: exact preferred name
+  if (name.includes("natural")) return 50;            // any "Online (Natural)" voice
+  if (!v.localService) return 20;                     // other cloud voice
+  return 0;                                           // local (robotic)
+}
+
+/** Returns voices for the given language, best quality first.
+ *  Edge/Chrome neural cloud voices ("Online (Natural)") are ranked above local ones. */
 export function getVoicesForLanguage(
   language: Language,
 ): SpeechSynthesisVoice[] {
   const langPrefix = language === "pl" ? "pl" : "en";
-  const all = window.speechSynthesis
+  const preferred = language === "pl" ? PREFERRED_PL : PREFERRED_EN;
+  return window.speechSynthesis
     .getVoices()
-    .filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
-
-  if (language === "pl") {
-    const anika = all.filter((v) => v.name.toLowerCase().includes("anika"));
-    const rest = all.filter((v) => !v.name.toLowerCase().includes("anika"));
-    return [
-      ...anika,
-      ...rest.filter((v) => v.localService),
-      ...rest.filter((v) => !v.localService),
-    ];
-  }
-
-  return [
-    ...all.filter((v) => v.localService),
-    ...all.filter((v) => !v.localService),
-  ];
+    .filter((v) => v.lang.toLowerCase().startsWith(langPrefix))
+    .sort((a, b) => scoreVoice(b, preferred) - scoreVoice(a, preferred));
 }
 
 function pickVoice(
   language: Language,
   voiceName?: string,
 ): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis.getVoices();
-
-  // Explicit override takes priority
   if (voiceName) {
-    const match = voices.find((v) => v.name === voiceName);
+    const match = window.speechSynthesis
+      .getVoices()
+      .find((v) => v.name === voiceName);
     if (match) return match;
   }
+  return getVoicesForLanguage(language)[0];
+}
 
-  // For Polish, prefer the Anika voice when available
-  if (language === "pl") {
-    const anika = voices.find((v) => v.name.toLowerCase().includes("anika"));
-    if (anika) return anika;
-  }
+// Known Polish TTS mispronunciations → phonetic replacements.
+// Only applied to the spoken text; displayed text is unchanged.
+const PL_TTS_FIXES: [RegExp, string][] = [
+  [/mieszaczy/g, "scramblerów"],
+  [/mieszacze/g, "scramblerzy"],
+];
 
-  const langPrefix = language === "pl" ? "pl" : "en";
-  return (
-    voices.find((v) => v.lang.startsWith(langPrefix) && v.localService) ??
-    voices.find((v) => v.lang.startsWith(langPrefix))
-  );
+function normalizePlTts(text: string): string {
+  return PL_TTS_FIXES.reduce((t, [re, sub]) => t.replace(re, sub), text);
+}
+
+// Names that look like Roman numerals or abbreviations and get misread by TTS.
+// We insert a zero-width non-joiner (U+200C) after the first letter so the
+// engine no longer matches the numeral pattern, while pronunciation is unchanged.
+const ROMAN_NUMERAL_NAMES = new Set([
+  "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx",
+  "li", "lv", "lx", "lxi", "iv", "vi", "vii", "viii", "ix",
+  "di", "ci",
+]);
+
+function normalizeNames(text: string): string {
+  // Match word-boundary tokens that are all ASCII letters (names, not numbers)
+  return text.replace(/\b([A-Za-z]+)\b/g, (word) => {
+    if (ROMAN_NUMERAL_NAMES.has(word.toLowerCase())) {
+      // Insert zero-width non-joiner after first char — breaks numeral pattern
+      return word[0] + "‌" + word.slice(1);
+    }
+    return word;
+  });
 }
 
 export function speakText(
@@ -317,7 +361,10 @@ export function speakText(
 
     // Give cancel() a tick to flush, then enqueue the utterance
     setTimeout(() => {
-      const utterance = new SpeechSynthesisUtterance(text);
+      const spokenText = normalizeNames(
+        language === "pl" ? normalizePlTts(text) : text,
+      );
+      const utterance = new SpeechSynthesisUtterance(spokenText);
       utterance.lang = language === "pl" ? "pl-PL" : "en-US";
       utterance.rate = 0.92;
       utterance.pitch = 1.0;

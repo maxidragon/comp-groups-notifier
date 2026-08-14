@@ -154,7 +154,6 @@ export default function CompetitionLivePage() {
         event.type,
         langRef.current,
       );
-      console.log(namesText);
       const fullText = text + namesText;
       const entry: AnnouncementLogEntry = { ...event, text: fullText };
 

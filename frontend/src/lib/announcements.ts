@@ -8,6 +8,7 @@ export type AnnounceType =
 
 // ─── Event name maps ───────────────────────────────────────────────────────────
 
+// Polish names are in the genitive case — they always follow "Zapraszamy … <konkurencji>".
 export const EVENT_NAMES: Record<Language | "title", Record<string, string>> = {
   pl: {
     "333": "kostki trzy na trzy",
@@ -17,16 +18,16 @@ export const EVENT_NAMES: Record<Language | "title", Record<string, string>> = {
     "666": "kostki sześć na sześć",
     "777": "kostki siedem na siedem",
     "333bf": "kostki trzy na trzy bez patrzenia",
-    "333fm": "kostki trzy na trzy rozwiązane w najmniejszej liczbie ruchów",
+    "333fm": "kostki trzy na trzy rozwiązywanej w najmniejszej liczbie ruchów",
     "333oh": "kostki trzy na trzy jedną ręką",
     clock: "clocka",
-    minx: "megaminx",
-    pyram: "pyraminx",
-    skewb: "skewb",
+    minx: "megaminxa",
+    pyram: "pyraminxa",
+    skewb: "skewba",
     sq1: "square one",
-    "444bf": "kostka cztery na cztery na pamięć",
-    "555bf": "kostka pięć na pięć na pamięć",
-    "333mbf": "multi blind",
+    "444bf": "kostki cztery na cztery bez patrzenia",
+    "555bf": "kostki pięć na pięć bez patrzenia",
+    "333mbf": "multiblinda",
   },
   en: {
     "333": "three by three",
@@ -95,6 +96,7 @@ const PL_ORD_TEENS = [
 ];
 const PL_ORD_TENS = [
   "", "", "dwudziestej", "trzydziestej", "czterdziestej", "pięćdziesiątej",
+  "sześćdziesiątej", "siedemdziesiątej", "osiemdziesiątej", "dziewięćdziesiątej",
 ];
 
 function toPolishOrdinalGenF(n: number): string {
@@ -102,7 +104,8 @@ function toPolishOrdinalGenF(n: number): string {
   const ten = Math.floor(n / 10);
   const one = n % 10;
   if (ten === 0) return PL_ORD_ONES[one] || String(n);
-  if (one === 0) return PL_ORD_TENS[ten] || String(n);
+  if (!PL_ORD_TENS[ten]) return String(n); // out of range (100+) — read as a digit
+  if (one === 0) return PL_ORD_TENS[ten];
   return `${PL_ORD_TENS[ten]} ${PL_ORD_ONES[one]}`;
 }
 
@@ -122,11 +125,11 @@ export function buildAnnouncementText(
     const which = [eventName, roundStr, groupStr].filter(Boolean).join(", ");
 
     const texts: Record<AnnounceType, string> = {
-      all: `Uwaga! Zapraszamy ${which}. Zapraszamy zawodników do oddania kostek, oraz wszystkie osoby funkcyjne do pełnienia swoich ról.`,
-      judges: `Zapraszamy sędziów ${which}.`,
+      all: `Uwaga! Zapraszamy ${which}. Zawodników prosimy o oddanie kostek do mieszania, a osoby funkcyjne o zgłoszenie się do swoich ról.`,
+      judges: `Zapraszamy sędziów ${which} na stanowiska sędziowskie.`,
       competitors: `Zapraszamy zawodników ${which} do poczekalni.`,
-      scramblers: `Zapraszamy mieszaczy do ${which} do mieszania.`,
-      runners: `Zapraszamy runnerów ${which}.`,
+      scramblers: `Zapraszamy mieszaczy ${which} do stolika mieszania.`,
+      runners: `Zapraszamy runnerów ${which} na stanowiska.`,
     };
     return texts[type] ?? texts.all;
   } else {
@@ -145,9 +148,16 @@ export function buildAnnouncementText(
   }
 }
 
+/** Join a list so it reads naturally when spoken: "A, B i C" / "A, B and C". */
+function joinNames(names: string[], language: Language): string {
+  if (names.length < 2) return names.join("");
+  const conjunction = language === "pl" ? "i" : "and";
+  return `${names.slice(0, -1).join(", ")} ${conjunction} ${names[names.length - 1]}`;
+}
+
 /**
  * Build the "name-reading" suffix appended after the main announcement.
- * e.g. "Są to: Jan Kowalski, Anna Nowak, Piotr Wiśniewski."
+ * e.g. " Zawodnicy: Jan Kowalski, Anna Nowak i Piotr Wiśniewski."
  */
 export function buildNamesText(
   names: string[],
@@ -155,14 +165,15 @@ export function buildNamesText(
   language: Language,
 ): string {
   if (!names.length) return "";
-  const joined = names.join(", ");
+  const joined = joinNames(names, language);
   if (language === "pl") {
+    // Labels start a new sentence, so they are capitalised.
     const intro: Partial<Record<AnnounceType, string>> = {
-      all: "Zawodnicy to",
-      competitors: "Zawodnicy to",
-      judges: "sędziowie to",
-      scramblers: "mieszacze to",
-      runners: "runnerzy to",
+      all: "Zawodnicy",
+      competitors: "Zawodnicy",
+      judges: "Sędziowie",
+      scramblers: "Mieszacze",
+      runners: "Runnerzy",
     };
     const label = intro[type] ?? "Osoby";
     return ` ${label}: ${joined}.`;
@@ -310,13 +321,23 @@ function pickVoice(
 
 // Known Polish TTS mispronunciations → phonetic replacements.
 // Only applied to the spoken text; displayed text is unchanged.
+// Matching is case-insensitive; the original capitalisation is preserved so that
+// sentence-initial labels ("Mieszacze: …") stay capitalised after substitution.
 const PL_TTS_FIXES: [RegExp, string][] = [
-  [/mieszaczy/g, "scramblerów"],
-  [/mieszacze/g, "scramblerzy"],
+  [/mieszaczy\b/gi, "scramblerów"],
+  [/mieszacze\b/gi, "scramblerzy"],
 ];
 
+function matchCase(source: string, replacement: string): string {
+  if (source[0] !== source[0].toUpperCase()) return replacement;
+  return replacement[0].toUpperCase() + replacement.slice(1);
+}
+
 function normalizePlTts(text: string): string {
-  return PL_TTS_FIXES.reduce((t, [re, sub]) => t.replace(re, sub), text);
+  return PL_TTS_FIXES.reduce(
+    (t, [re, sub]) => t.replace(re, (match) => matchCase(match, sub)),
+    text,
+  );
 }
 
 // Names that look like Roman numerals or abbreviations and get misread by TTS.

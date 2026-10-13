@@ -3,8 +3,16 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  WcifPerson,
+  WcifSchedule,
+  fetchPublicWcif,
+  findActivityId,
+  namesAssignedTo,
+} from './wcif';
 
 @Injectable()
 export class CompetitionsService {
@@ -56,9 +64,7 @@ export class CompetitionsService {
     let schedule = null;
     let events = null;
     try {
-      const { data: wcif } = await axios.get(
-        `https://www.worldcubeassociation.org/api/v0/competitions/${wcaId}/wcif/public`,
-      );
+      const wcif = await fetchPublicWcif(wcaId);
       schedule = wcif.schedule || null;
       events = wcif.events || null;
     } catch {
@@ -121,7 +127,8 @@ export class CompetitionsService {
       where: { userId, competitionId },
       include: { competition: true },
     });
-    if (!access) throw new NotFoundException('Competition not found or no access');
+    if (!access)
+      throw new NotFoundException('Competition not found or no access');
     return { ...access.competition, role: access.role };
   }
 
@@ -152,15 +159,13 @@ export class CompetitionsService {
 
     const { wcaId } = access.competition;
     try {
-      const { data: wcif } = await axios.get(
-        `https://www.worldcubeassociation.org/api/v0/competitions/${wcaId}/wcif/public`,
-      );
+      const wcif = await fetchPublicWcif(wcaId);
       return this.prisma.competition.update({
         where: { id: competitionId },
         data: {
-          schedule: wcif.schedule || null,
-          events: wcif.events || null,
-          persons: wcif.persons || null,   // ← store persons with assignments
+          schedule: asJson(wcif.schedule || null),
+          events: asJson(wcif.events || null),
+          persons: asJson(wcif.persons || null), // ← store persons with assignments
         },
       });
     } catch {
@@ -200,44 +205,21 @@ export class CompetitionsService {
     });
     if (!comp) return [];
 
-    const persons: any[] = (comp.persons as any[]) ?? [];
+    const persons = (comp.persons as unknown as WcifPerson[] | null) ?? [];
     if (!persons.length) return [];
 
     // Find the numeric activity id for the given activity code
-    const activityId = findActivityId(comp.schedule, activityCode);
+    const activityId = findActivityId(
+      comp.schedule as unknown as WcifSchedule | null,
+      activityCode,
+    );
     if (activityId === null) return [];
 
-    return persons
-      .filter((p) =>
-        (p.assignments ?? []).some(
-          (a: any) =>
-            a.activityId === activityId &&
-            a.assignmentCode === assignmentCode,
-        ),
-      )
-      .map((p) => p.name as string);
+    return namesAssignedTo(persons, activityId, assignmentCode);
   }
 }
 
-// ─── WCIF helpers ─────────────────────────────────────────────────────────────
-
-/** Recursively search the schedule tree for an activity matching the code */
-function findActivityId(schedule: any, activityCode: string): number | null {
-  for (const venue of schedule?.venues ?? []) {
-    for (const room of venue.rooms ?? []) {
-      const result = searchActivities(room.activities ?? [], activityCode);
-      if (result !== null) return result;
-    }
-  }
-  return null;
+// Prisma's Json input type has an index signature the WCIF interfaces lack
+function asJson(value: unknown): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
 }
-
-function searchActivities(activities: any[], activityCode: string): number | null {
-  for (const act of activities) {
-    if (act.activityCode === activityCode) return act.id as number;
-    const child = searchActivities(act.childActivities ?? [], activityCode);
-    if (child !== null) return child;
-  }
-  return null;
-}
-
